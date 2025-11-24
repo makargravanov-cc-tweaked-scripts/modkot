@@ -30,13 +30,10 @@ val client =
 
 suspend fun pingModrinth(): Boolean = client.get(modrinthBaseUrl).status == HttpStatusCode.OK
 
-suspend fun resolveModsFromConfig(configMods: Iterable<ModPackConfig.Version>): Map<ModPackConfig.Version, ModrinthModInfo> {
+suspend fun resolveModsFromConfig(configMods: Iterable<ModPackConfig.Version>): Map<ModPackConfig.Version, ModrinthModInfo?> {
     println("Resolving mods from modrinth")
 	
-    return configMods
-        .mapNotNull { mod ->
-            getModVersionFromModrinth(mod.slug, mod.versionNumber)?.let { mod to it }
-        }.toMap()
+    return configMods.associateWith { mod -> getModVersionFromModrinth(mod.slug, mod.versionNumber) }
 }
 
 suspend fun resolveInstalledMods(installedModsInfo: Iterable<InstalledModInfo>): Map<InstalledModInfo, ModrinthModInfo> =
@@ -46,17 +43,22 @@ suspend fun resolveInstalledMods(installedModsInfo: Iterable<InstalledModInfo>):
         }.toMap()
 
 @OptIn(ExperimentalTime::class)
-suspend fun findNewVersionsOfModrinthMods(mods: Iterable<ModrinthModInfo>): Map<ModrinthModInfo, Set<ModrinthModInfo>> {
+suspend fun findNewVersionsOfModrinthMods(
+    minecraftVersion: String,
+    loader: ModLoader,
+    mods: Map<ModPackConfig.Version, ModrinthModInfo?>,
+): Map<ModPackConfig.Version, Set<ModrinthModInfo>> {
     println("Search new versions")
 	
     return mods
-        .mapNotNull { mod ->
-            getModVersionsFromModrinth(mod.projectId)
-                .filter {
-                    it.datePublished > mod.datePublished
+        .mapNotNull { (key, value) ->
+            val projectIdOrSlug = value?.projectId ?: key.slug
+            getModVersionsFromModrinth(projectIdOrSlug, minecraftVersion, loader)
+                .filter { response ->
+                    value?.let { response.datePublished > it.datePublished } ?: true
                 }.sortedByDescending { it.datePublished }
                 .takeIf { it.isNotEmpty() }
-                ?.let { mod to it.toSet() }
+                ?.let { key to it.toSet() }
         }.toMap()
 }
 
@@ -161,3 +163,5 @@ suspend fun getModVersionFromModrinth(versionId: String): ModrinthModInfo? =
     client.get("$modrinthV2Url/version/$versionId").let {
         if (it.status == HttpStatusCode.OK) it.body() else null
     }
+
+fun <K, V> Map<K, V?>.filterValuesNotNull(): Map<K, V> = mapNotNull { (k, v) -> v?.let { k to it } }.toMap()

@@ -41,17 +41,26 @@ suspend fun runConsoleLoop() {
         println("0. Exit")
         if (isModrinthReached) {
             if (uninstalled?.isNotEmpty() ?: false || unexpected?.isNotEmpty() ?: false) {
-                println("1. Update mods")
+                println("1. Update mods use config (overwrite if needed)")
             }
             if (modConfig != null) {
-                println("2. Check updates")
+                println("2. Check updates from Modrinth")
             }
             if (modConfig != null) {
-                println("3. Migrate to other version")
+                println("3. Migrate to other version (overwrite exiting config)")
             }
             if (modConfig != null) {
-                println("4. Migrate to other loader")
+                println("4. Migrate to other loader (overwrite exiting config)")
             }
+            if (modConfig != null) {
+                println("5. Update config from Modrinth (overwrite exiting config)")
+            }
+        }
+        if (unexpected?.isNotEmpty() ?: false) {
+            println("6. List unexpected installed mods")
+        }
+        if (uninstalled?.isNotEmpty() ?: false) {
+            println("7. List uninstalled mods")
         }
 		
         val option = readln().filter { it.isDigit() }.take(10).toInt()
@@ -79,6 +88,9 @@ suspend fun runConsoleLoop() {
                     migrateScript(modConfig, modConfig.minecraftVersion, parsedLoader)
                 }
             }
+            5 if modConfig != null -> migrateScript(modConfig, modConfig.minecraftVersion, modConfig.modLoader)
+            6 if unexpected != null -> listUnexpectedInstalledMods(unexpected)
+            7 if uninstalled != null -> listUninstalledMods(uninstalled)
             else -> {
                 println("Unknown option")
                 delay(1000)
@@ -106,6 +118,18 @@ fun checkInstallation(
     return uninstalledMods to unexpectedInstalledMods
 }
 
+fun listUninstalledMods(uninstalledMods: Collection<ModPackConfig.Version>) {
+    uninstalledMods.forEachIndexed { index, mod ->
+        println("$index. Mod: ${mod.slug}, Version: ${mod.versionNumber}")
+    }
+}
+
+fun listUnexpectedInstalledMods(unexpectedInstalledMods: Collection<InstalledModInfo>) {
+    unexpectedInstalledMods.forEachIndexed { index, mod ->
+        println("$index. Mod: ${mod.fullFileName}")
+    }
+}
+
 suspend fun fixInstallation(
     uninstalledMods: Collection<ModPackConfig.Version>?,
     unexpectedInstalledMods: Collection<InstalledModInfo>?,
@@ -116,18 +140,23 @@ suspend fun fixInstallation(
 	
     uninstalledMods?.let {
         val resolvedMods = resolveModsFromConfig(it)
-        downloadMods(resolvedMods)
+        downloadMods(resolvedMods.filterValuesNotNull())
     }
 }
 
 suspend fun findNewerVersionsOfMods(modConfig: ModPackConfig) {
     val resolvedModsFromConfig = resolveModsFromConfig(modConfig.modVersions)
-    val newerVersionsOfMods = findNewVersionsOfModrinthMods(resolvedModsFromConfig.values)
+    val newerVersionsOfMods =
+        findNewVersionsOfModrinthMods(
+            modConfig.minecraftVersion,
+            modConfig.modLoader,
+            resolvedModsFromConfig,
+        )
 	
     if (newerVersionsOfMods.isNotEmpty()) {
         println("Founded new mods versions: ")
         newerVersionsOfMods.entries.forEachIndexed { index, (k, v) ->
-            println("$index. ID: ${k.projectId}")
+            println("$index. ID: ${k.slug}")
             v.forEachIndexed { index, info ->
                 print("- ")
                 info.printModInfoLn(index)
@@ -165,8 +194,7 @@ suspend fun migrateScript(
                     .let { mod to it }
             }
 	
-    val (resolvedCompatibleMods, unresolvedCompatibleMods) =
-        foundedCompatibleMods.partition { it.second != null }
+    val unresolvedCompatibleMods = foundedCompatibleMods.filter { it.second == null }
 	
     if (unresolvedCompatibleMods.isNotEmpty()) {
         println("Founded unresolved mods with minecraftVersion: $proposedMinecraftVersion and loader: $proposedLoader")
@@ -194,4 +222,6 @@ suspend fun migrateScript(
     if (configFile.exists()) {
         configFile.writeText(Yaml.default.encodeToString(ModPackConfig.serializer(), newModConfig))
     }
+	
+    println("Config successfully updated")
 }
