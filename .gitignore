@@ -45,4 +45,4 @@ bin/
 .DS_Store
 
 /mods/
-./modpack-config.yaml
+modpack-config-backup.yaml

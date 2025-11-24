@@ -105,12 +105,12 @@ fun checkInstallation(
     modPackConfig: ModPackConfig,
     installedModInfos: Iterable<InstalledModInfo>,
 ): Pair<Set<ModPackConfig.Version>?, Set<InstalledModInfo>?> {
-    val configModNames = modPackConfig.modVersions.map { it.modName }
-    val installedModNames = installedModInfos.map { it.modName }
+    val configModNames = modPackConfig.modList.map { it.modName }
+    val installedModNames = installedModInfos.map { it.fileName }
 	
-    val unexpectedInstalledMods = installedModInfos.filter { it.modName !in configModNames }.toSet().takeIf { it.isNotEmpty() }
+    val unexpectedInstalledMods = installedModInfos.filter { it.fileName !in configModNames }.toSet().takeIf { it.isNotEmpty() }
     val uninstalledMods =
-        modPackConfig.modVersions
+        modPackConfig.modList
             .filter { it.modName !in installedModNames }
             .toSet()
             .takeIf { it.isNotEmpty() }
@@ -120,7 +120,7 @@ fun checkInstallation(
 
 fun listUninstalledMods(uninstalledMods: Collection<ModPackConfig.Version>) {
     uninstalledMods.forEachIndexed { index, mod ->
-        println("$index. Mod: ${mod.slug}, Version: ${mod.versionNumber}")
+        println("$index. Slug: ${mod.slug}, Version: ${mod.versionNumber}, ID: ${mod.versionId}")
     }
 }
 
@@ -145,7 +145,7 @@ suspend fun fixInstallation(
 }
 
 suspend fun findNewerVersionsOfMods(modConfig: ModPackConfig) {
-    val resolvedModsFromConfig = resolveModsFromConfig(modConfig.modVersions)
+    val resolvedModsFromConfig = resolveModsFromConfig(modConfig.modList)
     val newerVersionsOfMods =
         findNewVersionsOfModrinthMods(
             modConfig.minecraftVersion,
@@ -180,7 +180,7 @@ suspend fun migrateScript(
     val newModLoader = proposedLoader ?: modConfig.modLoader
 	
     val foundedCompatibleMods =
-        modConfig.modVersions
+        modConfig.modList
             .map { mod ->
                 getModVersionsFromModrinth(
                     mod.slug,
@@ -208,8 +208,12 @@ suspend fun migrateScript(
     }
 	
     val newModList =
-        foundedCompatibleMods.associate {
-            it.first.slug to (it.second?.versionNumber ?: "null")
+        foundedCompatibleMods.map {
+            ModPackConfig.Version(
+                it.first.slug,
+                it.second?.versionNumber,
+                it.second?.id,
+            )
         }
 	
     val newModConfig =

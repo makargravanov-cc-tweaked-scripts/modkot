@@ -7,16 +7,15 @@ import kotlinx.serialization.Transient
 data class ModPackConfig(
     val minecraftVersion: String,
     val modLoader: ModLoader,
-    val modList: Map<String, String?>,
+    val modList: List<Version>,
 ) {
-    @Transient
-    val modVersions = modList.map { (key, value) -> Version(key, value ?: "null") }
-
     @Serializable
     data class Version(
         val slug: String,
-        val versionNumber: String,
+        val versionNumber: String? = null,
+        val versionId: String? = null,
     ) {
-        val modName: String = "$slug-$versionNumber"
+        @Transient
+        val modName: String = "$versionId-$slug-$versionNumber"
     }
 }

@@ -4,7 +4,6 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
-import io.ktor.client.request.parameter
 import io.ktor.client.request.prepareGet
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
@@ -16,7 +15,6 @@ import kotlinx.io.RawSink
 import kotlinx.io.asSink
 import java.io.File
 import kotlin.time.ExperimentalTime
-import kotlin.use
 
 val modrinthBaseUrl = "https://api.modrinth.com"
 val modrinthV2Url = "$modrinthBaseUrl/v2"
@@ -33,14 +31,14 @@ suspend fun pingModrinth(): Boolean = client.get(modrinthBaseUrl).status == Http
 suspend fun resolveModsFromConfig(configMods: Iterable<ModPackConfig.Version>): Map<ModPackConfig.Version, ModrinthModInfo?> {
     println("Resolving mods from modrinth")
 	
-    return configMods.associateWith { mod -> getModVersionFromModrinth(mod.slug, mod.versionNumber) }
+    return configMods.associateWith { mod -> mod.versionId?.let { getModVersionFromModrinth(it) } }
 }
 
-suspend fun resolveInstalledMods(installedModsInfo: Iterable<InstalledModInfo>): Map<InstalledModInfo, ModrinthModInfo> =
-    installedModsInfo
-        .mapNotNull { mod ->
-            getModVersionFromModrinth(mod.versionId)?.let { mod to it }
-        }.toMap()
+// suspend fun resolveInstalledMods(installedModsInfo: Iterable<InstalledModInfo>): Map<InstalledModInfo, ModrinthModInfo> =
+//    installedModsInfo
+//        .mapNotNull { mod ->
+//            getModVersionFromModrinth(mod.versionId)?.let { mod to it }
+//        }.toMap()
 
 @OptIn(ExperimentalTime::class)
 suspend fun findNewVersionsOfModrinthMods(
@@ -55,7 +53,9 @@ suspend fun findNewVersionsOfModrinthMods(
             val projectIdOrSlug = value?.projectId ?: key.slug
             getModVersionsFromModrinth(projectIdOrSlug, minecraftVersion, loader)
                 .filter { response ->
-                    value?.let { response.datePublished > it.datePublished } ?: true
+                    value?.let { response.datePublished > it.datePublished } ?: true &&
+                        response.gameVersions?.any { it == minecraftVersion } ?: false &&
+                        response.loaders?.any { it == loader } ?: false
                 }.sortedByDescending { it.datePublished }
                 .takeIf { it.isNotEmpty() }
                 ?.let { key to it.toSet() }
@@ -142,22 +142,29 @@ suspend fun getModVersionsFromModrinth(
     projectId: String,
     minecraftVersion: String? = null,
     loader: ModLoader? = null,
-): List<ModrinthModInfo> =
-    client
-        .get("$modrinthV2Url/project/$projectId/version") {
-            parameter("loaders", listOfNotNull(loader))
-            parameter("game_versions", listOfNotNull(minecraftVersion))
-        }.body<List<ModrinthModInfo>>()
+): List<ModrinthModInfo> {
+    val loaders = loader?.let { "loaders=[\"${it.name.lowercase()}\"]" }
+    val gameVersions = minecraftVersion?.let { "game_versions=[\"$it\"]" }
+	
+    val queryParameters =
+        listOfNotNull(loaders, gameVersions)
+            .takeIf { it.isNotEmpty() }
+            ?.let { "?${it.joinToString("&")}" } ?: ""
+	
+    return client
+        .get("$modrinthV2Url/project/$projectId/version$queryParameters")
+        .body<List<ModrinthModInfo>>()
+}
 
-suspend fun getModVersionFromModrinth(
-    projectIdOrSlug: String,
-    versionIdOrVersionNumber: String,
-): ModrinthModInfo? =
-    client
-        .get("$modrinthV2Url/project/$projectIdOrSlug/version/$versionIdOrVersionNumber")
-        .let {
-            if (it.status == HttpStatusCode.OK)	it.body<ModrinthModInfo>() else null
-        }
+// suspend fun getModVersionFromModrinth(
+//    projectIdOrSlug: String,
+//    versionIdOrVersionNumber: String,
+// ): ModrinthModInfo? =
+//    client
+//        .get("$modrinthV2Url/project/$projectIdOrSlug/version/$versionIdOrVersionNumber")
+//        .let {
+//            if (it.status == HttpStatusCode.OK)	it.body<ModrinthModInfo>() else null
+//        }
 
 suspend fun getModVersionFromModrinth(versionId: String): ModrinthModInfo? =
     client.get("$modrinthV2Url/version/$versionId").let {

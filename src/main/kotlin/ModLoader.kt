@@ -16,4 +16,28 @@ enum class ModLoader {
 	
     @SerialName("quilt")
     QUILT,
+	
+    @SerialName("modloader")
+    MODLOADER,
+	
+    @SerialName("velocity")
+    VELOCITY,
+	
+    @SerialName("bukkit")
+    BUKKIT,
+	
+    @SerialName("spigot")
+    SPIGOT,
+	
+    @SerialName("paper")
+    PAPER,
+	
+    @SerialName("bungeecord")
+    BUNGEECORD,
+	
+    @SerialName("folia")
+    FOLIA,
+	
+    @SerialName("purpur")
+    PURPUR,
 }
